@@ -159,18 +159,13 @@ function getOrCreateSheet(ss, name) {
   return ss.getSheetByName(name) || ss.insertSheet(name);
 }
 
-// スプレッドシートのヘッダー名 → コードのキー名 の変換マップ
-const HEADER_ALIAS = {
-  'title':  'text',    // Tasks: title → text
-  'status': 'done',    // Tasks: status → done
-  'note':   'memo',    // Finance: note → memo
-};
-
+// ===================================================================
+//  シート <-> JSON 変換
+// ===================================================================
 function sheetToJson(ws) {
   const data = ws.getDataRange().getValues();
   if (data.length < 2) return [];
-  // ヘッダーを正規化（エイリアス変換）
-  const headers = data[0].map(h => HEADER_ALIAS[h] || h);
+  const headers = data[0];
   return data.slice(1).map(row => {
     const obj = {};
     headers.forEach((h, i) => {
@@ -180,26 +175,13 @@ function sheetToJson(ws) {
   });
 }
 
-// Utilities
-function formatDateKey(dateObj) {
-  if (!dateObj) return '';
-  const d = new Date(dateObj);
-  if (isNaN(d.getTime())) return String(dateObj);
-  // スプレッドシートの日付はJST 기준으로取得されることが多いため、単純に文字列化して先頭10文字を取るか手動フォーマットする
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
 // Diary シートを { date: {content, rating, imageUrl, updatedAt} } の形式に変換
 function diarySheetToObj(ws) {
   const rows = sheetToJson(ws);
   const obj = {};
   rows.forEach(r => {
     if (r.date) {
-      const dateKey = formatDateKey(r.date);
-      obj[dateKey] = {
+      obj[r.date] = {
         content:   r.content   || '',
         rating:    r.rating    || null,
         imageUrl:  r.imageUrl  || null,
@@ -277,44 +259,27 @@ function handleDelete(ws, id) {
 //  全件置換（replaceAll）
 // ===================================================================
 function handleReplaceAll(ws, rows, sheetName) {
-  // スプレッドシートの実際のヘッダーを取得（ヘッダー行がない場合はスキーマで初期化）
-  const defaultSchemas = {
+  const schemas = {
     'Tasks':     ['id', 'text', 'category', 'done', 'createdAt', 'memo'],
     'Study':     ['id', 'subject', 'minutes', 'date', 'memo'],
     'Finance':   ['id', 'type', 'category', 'amount', 'memo', 'date'],
     'Questions': ['id', 'text', 'solved', 'answer', 'createdAt'],
   };
-
-  let sheetHeaders;
-  if (ws.getLastRow() >= 1 && ws.getLastColumn() >= 1) {
-    sheetHeaders = ws.getRange(1, 1, 1, ws.getLastColumn()).getValues()[0].map(String);
-  }
-  if (!sheetHeaders || sheetHeaders.length === 0 || sheetHeaders[0] === '') {
-    sheetHeaders = defaultSchemas[sheetName];
-    if (!sheetHeaders) return;
-    ws.getRange(1, 1, 1, sheetHeaders.length).setValues([sheetHeaders]);
-  }
-
-  // エイリアスの逆引き: コード側のキー名 → スプレッドシートのヘッダー名
-  const REVERSE_ALIAS = {};
-  Object.entries(HEADER_ALIAS).forEach(([sheetKey, codeKey]) => {
-    REVERSE_ALIAS[codeKey] = sheetKey;
-  });
+  const headers = schemas[sheetName];
+  if (!headers) return;
 
   // ヘッダー行以外をすべて削除
   const lastRow = ws.getLastRow();
   if (lastRow > 1) ws.deleteRows(2, lastRow - 1);
 
-  // 新規データを一括追加（スプレッドシートのヘッダー名に合わせてマッピング）
+  // 新規データを一括追加
   if (!rows || rows.length === 0) return;
-  const data = rows.map(row => sheetHeaders.map(sheetCol => {
-    // スプレッドシートのヘッダー名に対応するコード側のキーを解決
-    const codeKey = HEADER_ALIAS[sheetCol] || sheetCol; // title→text, status→done
-    const v = row[codeKey] !== undefined ? row[codeKey] : row[sheetCol]; // どちらでも対応
+  const data = rows.map(row => headers.map(h => {
+    const v = row[h];
     if (typeof v === 'boolean') return String(v);
-    return v !== undefined && v !== null ? v : '';
+    return v !== undefined ? v : '';
   }));
-  ws.getRange(2, 1, data.length, sheetHeaders.length).setValues(data);
+  ws.getRange(2, 1, data.length, headers.length).setValues(data);
 }
 
 // ===================================================================
@@ -322,29 +287,31 @@ function handleReplaceAll(ws, rows, sheetName) {
 // ===================================================================
 function handleSaveDiary(ws, date, entry) {
   const data    = ws.getDataRange().getValues();
-  const rawHeaders = data[0];
-  const dateCol = rawHeaders.indexOf('date');
+  const headers = data[0];
+  const dateCol = headers.indexOf('date');
   if (dateCol === -1) return;
-
-  // ヘッダーに基づいて書き込む値のオブジェクトを作成
-  const entryObj = {
-    date:      date,
-    content:   entry.content   || '',
-    rating:    entry.rating    || '',
-    imageUrl:  entry.imageUrl  || '',
-    updatedAt: entry.updatedAt || new Date().toISOString(),
-  };
-  const newRow = rawHeaders.map(h => entryObj[h] !== undefined ? entryObj[h] : '');
 
   for (let r = 1; r < data.length; r++) {
     if (String(data[r][dateCol]) === String(date)) {
       // 既存行を更新
-      ws.getRange(r + 1, 1, 1, rawHeaders.length).setValues([newRow]);
+      ws.getRange(r + 1, 1, 1, headers.length).setValues([[
+        date,
+        entry.content   || '',
+        entry.rating    || '',
+        entry.imageUrl  || '',
+        entry.updatedAt || new Date().toISOString(),
+      ]]);
       return;
     }
   }
   // 新規行を追加
-  ws.appendRow(newRow);
+  ws.appendRow([
+    date,
+    entry.content   || '',
+    entry.rating    || '',
+    entry.imageUrl  || '',
+    entry.updatedAt || new Date().toISOString(),
+  ]);
 }
 
 function handleDeleteDiary(ws, date) {
@@ -363,27 +330,14 @@ function handleDeleteDiary(ws, date) {
 
 // 日記を全件まとめて保存
 function handleSaveAllDiaries(ws, entries) {
-  // ヘッダー行を取得（なければデフォルト）
-  let headers;
-  if (ws.getLastRow() >= 1 && ws.getLastColumn() >= 1) {
-    headers = ws.getRange(1, 1, 1, ws.getLastColumn()).getValues()[0].map(String);
-  }
-  if (!headers || headers.length === 0 || headers[0] === '') {
-    headers = ['date', 'content', 'rating', 'imageUrl', 'updatedAt'];
-    ws.getRange(1, 1, 1, headers.length).setValues([headers]);
-  }
-
-  // ヘッダー行以外削除
+  // ヘッダー以外削除
   const lastRow = ws.getLastRow();
   if (lastRow > 1) ws.deleteRows(2, lastRow - 1);
   if (!entries || Object.keys(entries).length === 0) return;
-
-  const rows = Object.entries(entries).map(([date, e]) => {
-    const obj = { date, content: e.content||'', rating: e.rating||'',
-      imageUrl: e.imageUrl||'', updatedAt: e.updatedAt||new Date().toISOString() };
-    return headers.map(h => obj[h] !== undefined ? obj[h] : '');
-  });
-  if (rows.length > 0) ws.getRange(2, 1, rows.length, headers.length).setValues(rows);
+  const rows = Object.entries(entries).map(([date, e]) => [
+    date, e.content||'', e.rating||'', e.imageUrl||'', e.updatedAt||new Date().toISOString()
+  ]);
+  if (rows.length > 0) ws.getRange(2, 1, rows.length, 5).setValues(rows);
 }
 
 // ===================================================================
