@@ -3904,13 +3904,18 @@
       let diaries = loadData('diaries', {});
       if (typeof diaries !== 'object' || Array.isArray(diaries)) diaries = {};
 
-      if (content || currentRating) {
-        const existing = diaries[diaryDate] || {};
+      // 削除フラグが立っているか判定
+      const isRemovingImage = window.diaryRemovingImage === true;
+      const existing = diaries[diaryDate] || {};
+
+      if (content || currentRating || existing.imageUrl) {
         diaries[diaryDate] = {
           content,
           rating: currentRating || existing.rating || null,
+          imageUrl: isRemovingImage ? null : existing.imageUrl || null,
           updatedAt: new Date().toISOString()
         };
+        if (isRemovingImage) { window.diaryRemovingImage = false; }
       } else {
         delete diaries[diaryDate];
       }
@@ -3959,6 +3964,24 @@
         btn.classList.toggle('active', btn.dataset.rating === currentRating);
       });
 
+      // 画像の表示
+      const imgPreview = document.getElementById('diary-image-preview');
+      const imgEl = document.getElementById('diary-preview-img');
+      const inpFile = document.getElementById('diary-image-input');
+      
+      pendingImageData = null;
+      pendingImageFile = null;
+      window.diaryRemovingImage = false; // 初期化
+      if (inpFile) inpFile.value = '';
+
+      if (entry && entry.imageUrl) {
+        imgEl.src = entry.imageUrl;
+        imgPreview.style.display = 'block';
+      } else {
+        imgEl.src = '';
+        imgPreview.style.display = 'none';
+      }
+
       renderDiaryHistory();
     }
 
@@ -3986,7 +4009,7 @@
         const ratingBadge = entry.rating ? `<span class="history-rating rate-${entry.rating}">${entry.rating}</span>` : '';
         return `
     <div class="record-item" style="cursor:pointer;${isActive ? 'border-color:var(--accent-orange);' : ''}"
-         onclick="openDiaryDetail('${date}')">
+         onclick="editDiary('${date}')">
       <div class="record-icon" style="background:rgba(210,153,34,0.12);">📝</div>
       <div class="record-info">
         <div class="record-main">${formatDateFull(date)}${ratingBadge}</div>
@@ -4276,17 +4299,14 @@
       });
     }
 
-    function openDiaryDetail(date) {
-      const diaries = loadData('diaries', {});
-      const entry = diaries[date];
-      if (!entry) return;
-      const rateLabel = entry.rating ? ['', '😞 最悪', '😕 悪い', '😐 普通', '🙂 良い', '😄 最高'][entry.rating] || entry.rating : null;
-      openDetailModal({
-        title: '📝 ' + formatDateFull(date),
-        date: '',
-        meta: rateLabel ? [rateLabel] : [],
-        body: entry.content || ''
-      });
+    function editDiary(date) {
+      diaryDate = date;
+      setDiaryView('editor');
+      renderDiary();
+      const panel = document.getElementById('diary-editor-panel');
+      if (panel) {
+        panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
     }
 
     // ===================================================================
@@ -5507,9 +5527,11 @@
       });
     }
 
+    window.diaryRemovingImage = false;
     function removeDiaryImage() {
       pendingImageData = null;
       pendingImageFile = null;
+      window.diaryRemovingImage = true; // 既存の画像を削除するフラグ
       const inp = document.getElementById('diary-image-input');
       if (inp) inp.value = '';
       document.getElementById('diary-image-preview').style.display = 'none';
@@ -5532,18 +5554,26 @@
             fileName: 'diary_' + diaryDate + '_' + Date.now() + '.' +
               (pendingImageFile.name.split('.').pop() || 'jpg')
           }),
-          headers: { 'Content-Type': 'application/json' }
+          headers: { 'Content-Type': 'text/plain' } // CORS制限を回避するためtext/plainにする
         });
         const d = await res.json();
         if (d.ok) {
-          // imageUrlをlocalStorageに保存してから通常保存
+          // fetch完了後に元データのimageUrlを一時変域に記録する
           let diaries = loadData('diaries', {});
           if (!diaries[diaryDate]) diaries[diaryDate] = {};
           diaries[diaryDate].imageUrl = d.imageUrl;
           _origSaveData('diaries', diaries);
         }
       } catch (e) { console.warn('Image upload error:', e); }
+      
+      // 画像アップロード完了（または未指定）後、_origSaveDiary を呼んでテキスト系を保存
       _origSaveDiary();
+      // 上書きされた後に、もう一度 localStorage から最新の imageUrl を引っ張ってきて結合する
+      let finalDiaries = loadData('diaries', {});
+      if (finalDiaries[diaryDate] && pendingImageData) {
+         // GASから取得した最新の画像を引っ張ってくる手当て
+         // _origSaveDiary では既存の imageUrl は保持されるように直したため、これで画像は残るはず
+      }
       removeDiaryImage();
     }
 
