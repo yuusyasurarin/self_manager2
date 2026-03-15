@@ -5424,10 +5424,15 @@
       } catch (e) { console.warn('GAS POST error:', e); }
     }
 
+    // API送信中フラグ（無限ループ防止）
+    let isSyncing = false;
+
     // saveDataをオーバーライド → LocalStorage保存 + GASへ非同期同期
     function saveData(key, data) {
       _origSaveData(key, data); // まずLocalStorageに保存（即時）
-      syncToGAS(key, data).catch(console.warn); // GASへ非同期
+      if (!isSyncing) {
+        syncToGAS(key, data).catch(console.warn); // GASへ非同期
+      }
     }
 
     const CONFIG_KEYS = ['careerSkills', 'careerRoadmap', 'weeklyActions',
@@ -5557,6 +5562,8 @@
         try {
           if (!d.ok) throw new Error(d.error || 'Fetch failed');
 
+          isSyncing = true; // render時の追加同期を防止
+
           // 配列データ
           if (d.tasks && Array.isArray(d.tasks)) {
             d.tasks.forEach(t => { t.done = t.done === 'true' || t.done === true; });
@@ -5597,20 +5604,26 @@
         } catch (e) {
           console.error('syncFromGAS error:', e);
           banner.style.background = '#6e4c18';
-          banner.textContent = '⚠ GAS同期エラー（ローカルデータで動作中）';
+          banner.textContent = '⚠ GAS同期エラー: ' + e.message;
+        } finally {
+          isSyncing = false; // 同期完了（または失敗）したらフラグを下ろす
         }
-        setTimeout(() => banner.remove(), 2500);
+        setTimeout(() => banner.remove(), 10000); // エラーが読めるように10秒残す
       };
 
       // scriptタグを挿入してJSONPリクエスト
       const script = document.createElement('script');
       script.id = 'gas-jsonp-script';
       script.src = GAS_APP_URL + '?callback=' + cbName + '&nocache=' + Date.now();
-      script.onerror = function () {
+      script.onerror = function (e) {
+        console.error('JSONP script load error!', {
+          src: script.src,
+          event: e
+        });
         cleanup();
         banner.style.background = '#6e4c18';
-        banner.textContent = '⚠ GAS接続エラー（ローカルデータで動作中）';
-        setTimeout(() => banner.remove(), 2500);
+        banner.textContent = '⚠ GAS接続エラー（コンソールを確認してください）';
+        setTimeout(() => banner.remove(), 4000);
       };
       document.body.appendChild(script);
     }
