@@ -5405,21 +5405,19 @@
     //  ここにGASウェブアプリのURLを貼り付けてください
     // ===================================================================
 
-    const GAS_APP_URL = 'https://script.google.com/macros/s/AKfycbxhE0mOlpmZOEo3UjcB-Pv4UTDLqXaTZahQqbal2PnXxyJhtHTy5Q3QnqDtWQlkdnA5/exec'; // ← デプロイしたURLに書き換え
+    const GAS_APP_URL = 'https://script.google.com/macros/s/AKfycbzCcfTIvWUOXWBhdVh_pB_34d2-t0M6FqAxqqeJNGuq2b1qzAbQYE9vZYajcn5IoYGW/exec'; // ← デプロイしたURLに書き換え
 
     // 元のsaveDataを保存
     const _origSaveData = saveData;
 
     // GAS APIへのPOSTヘルパー（バックグラウンド）
-    // no-cors モードで送信（file:// からでもブロックされない）
     async function gasPost(body) {
       if (!GAS_APP_URL || GAS_APP_URL.includes('YOUR_')) return;
       try {
         await fetch(GAS_APP_URL, {
           method: 'POST',
-          mode: 'no-cors',
           body: JSON.stringify(body),
-          headers: { 'Content-Type': 'application/json' }
+          headers: { 'Content-Type': 'text/plain' } // CORSプリフライトを回避
         });
       } catch (e) { console.warn('GAS POST error:', e); }
     }
@@ -5428,7 +5426,7 @@
     let isSyncing = false;
 
     // saveDataをオーバーライド → LocalStorage保存 + GASへ非同期同期
-    saveData = function(key, data) {
+    saveData = function (key, data) {
       _origSaveData(key, data); // まずLocalStorageに保存（即時）
       if (!isSyncing) {
         syncToGAS(key, data).catch(console.warn); // GASへ非同期
@@ -5494,7 +5492,7 @@
 
     // 日記保存：画像がある場合はGASにアップロードしてURLを取得してから保存
     const _origSaveDiary = saveDiary;
-    saveDiary = async function() {
+    saveDiary = async function () {
       if (!pendingImageData || !GAS_APP_URL || GAS_APP_URL.includes('YOUR_')) {
         _origSaveDiary(); // 画像なし or GASnot設定 → 元の処理
         return;

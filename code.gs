@@ -140,8 +140,17 @@ function initSheets(ss) {
   };
   for (const [name, headers] of Object.entries(schemas)) {
     const ws = getOrCreateSheet(ss, name);
-    if (ws.getLastRow() === 0) {
+    const lastRow = ws.getLastRow();
+    const lastCol = ws.getLastColumn();
+    // ヘッダーが存在しないか、列数が足りない場合は1行目に設定
+    if (lastRow === 0) {
       ws.appendRow(headers);
+    } else {
+      const existing = ws.getRange(1, 1, 1, Math.max(lastCol, headers.length)).getValues()[0];
+      // 最初のヘッダーが期待値と違う場合は上書き
+      if (existing[0] !== headers[0]) {
+        ws.getRange(1, 1, 1, headers.length).setValues([headers]);
+      }
     }
   }
 }
