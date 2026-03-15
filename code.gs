@@ -32,25 +32,39 @@ function jsonResponse(data) {
 // ===================================================================
 function doGet(e) {
   try {
+    const callback = e.parameter.callback; // JSONP対応
     const sheet = e.parameter.sheet;
     const key   = e.parameter.key;   // Config用
 
+    let result;
     if (!sheet) {
-      // 全データを一括返却
-      return jsonResponse(getAllData());
+      result = getAllData();
+    } else if (sheet === SHEET.CONFIG) {
+      result = { ok: true, value: getConfig(key) };
+    } else {
+      const ss   = SpreadsheetApp.openById(SPREADSHEET_ID);
+      const ws   = getOrCreateSheet(ss, sheet);
+      const rows = sheetToJson(ws);
+      result = { ok: true, rows };
     }
 
-    if (sheet === SHEET.CONFIG) {
-      return jsonResponse({ ok: true, value: getConfig(key) });
+    // JSONP: callbackパラメータがあれば callback(JSON) 形式で返す
+    if (callback) {
+      return ContentService
+        .createTextOutput(callback + '(' + JSON.stringify(result) + ')')
+        .setMimeType(ContentService.MimeType.JAVASCRIPT);
     }
-
-    const ss   = SpreadsheetApp.openById(SPREADSHEET_ID);
-    const ws   = getOrCreateSheet(ss, sheet);
-    const rows = sheetToJson(ws);
-    return jsonResponse({ ok: true, rows });
+    return jsonResponse(result);
 
   } catch (err) {
-    return jsonResponse({ ok: false, error: err.message });
+    const errResult = { ok: false, error: err.message };
+    const callback = e.parameter.callback;
+    if (callback) {
+      return ContentService
+        .createTextOutput(callback + '(' + JSON.stringify(errResult) + ')')
+        .setMimeType(ContentService.MimeType.JAVASCRIPT);
+    }
+    return jsonResponse(errResult);
   }
 }
 

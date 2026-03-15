@@ -5405,7 +5405,7 @@
     //  ここにGASウェブアプリのURLを貼り付けてください
     // ===================================================================
 
-    const GAS_APP_URL = 'https://script.google.com/macros/s/AKfycby19o5o01laf5TLe8AcnWD-ijpdLfAwlLow5FyibvRfW-wQtS_RC_yTOZ_Wqxfb4hrB/exec'; // ← デプロイしたURLに書き換え
+    const GAS_APP_URL = 'https://script.google.com/macros/s/AKfycbxhE0mOlpmZOEo3UjcB-Pv4UTDLqXaTZahQqbal2PnXxyJhtHTy5Q3QnqDtWQlkdnA5/exec'; // ← デプロイしたURLに書き換え
 
     // 元のsaveDataを保存
     const _origSaveData = saveData;
@@ -5536,55 +5536,83 @@
       banner.textContent = '☁️ サーバーからデータを同期中...';
       document.body.prepend(banner);
 
-      try {
-        const r = await fetch(GAS_APP_URL + '?nocache=' + Date.now());
-        const d = await r.json();
-        if (!d.ok) throw new Error(d.error || 'Fetch failed');
-
-        // 配列データ
-        if (d.tasks && Array.isArray(d.tasks)) {
-          // boolの文字列変換を修正
-          d.tasks.forEach(t => { t.done = t.done === 'true' || t.done === true; });
-          _origSaveData('tasks', d.tasks); tasks = d.tasks;
-        }
-        if (d.studies && Array.isArray(d.studies)) {
-          d.studies.forEach(s => { s.minutes = Number(s.minutes) || 0; });
-          _origSaveData('studies', d.studies); studies = d.studies;
-        }
-        if (d.finances && Array.isArray(d.finances)) {
-          d.finances.forEach(f => { f.amount = Number(f.amount) || 0; });
-          _origSaveData('finances', d.finances); finances = d.finances;
-        }
-        if (d.questions && Array.isArray(d.questions)) {
-          d.questions.forEach(q => { q.solved = q.solved === 'true' || q.solved === true; });
-          _origSaveData('questions', d.questions); questions = d.questions;
-        }
-        if (d.diary && typeof d.diary === 'object') {
-          _origSaveData('diaries', d.diary);
-        }
-
-        // Config系
-        const cfg = d.config || {};
-        CONFIG_KEYS.forEach(k => {
-          if (cfg[k] !== undefined) _origSaveData(k, cfg[k]);
-        });
-
-        // 全再描画
-        renderTaskCategorySelect();
-        renderStudySubjectSelect();
-        updateFinanceCategories();
-        renderTasks(); renderStudy(); renderFinance();
-        renderDiary(); renderQuestions(); renderCareer();
-        renderStudyCal(); renderFinanceCal();
-
-        banner.style.background = 'var(--accent-green)';
-        banner.textContent = '✓ データを同期しました';
-      } catch (e) {
-        console.error('syncFromGAS error:', e);
+      // JSONP方式でGASからデータ取得（CORSの影響を受けない）
+      const cbName = '_gasSyncCb_' + Date.now();
+      const timeout = setTimeout(() => {
+        cleanup();
         banner.style.background = '#6e4c18';
-        banner.textContent = '⚠ GAS同期エラー（ローカルデータで動作中）';
+        banner.textContent = '⚠ GAS同期タイムアウト（ローカルデータで動作中）';
+        setTimeout(() => banner.remove(), 2500);
+      }, 15000); // 15秒タイムアウト
+
+      function cleanup() {
+        clearTimeout(timeout);
+        delete window[cbName];
+        const s = document.getElementById('gas-jsonp-script');
+        if (s) s.remove();
       }
-      setTimeout(() => banner.remove(), 2500);
+
+      window[cbName] = function (d) {
+        cleanup();
+        try {
+          if (!d.ok) throw new Error(d.error || 'Fetch failed');
+
+          // 配列データ
+          if (d.tasks && Array.isArray(d.tasks)) {
+            d.tasks.forEach(t => { t.done = t.done === 'true' || t.done === true; });
+            _origSaveData('tasks', d.tasks); tasks = d.tasks;
+          }
+          if (d.studies && Array.isArray(d.studies)) {
+            d.studies.forEach(s => { s.minutes = Number(s.minutes) || 0; });
+            _origSaveData('studies', d.studies); studies = d.studies;
+          }
+          if (d.finances && Array.isArray(d.finances)) {
+            d.finances.forEach(f => { f.amount = Number(f.amount) || 0; });
+            _origSaveData('finances', d.finances); finances = d.finances;
+          }
+          if (d.questions && Array.isArray(d.questions)) {
+            d.questions.forEach(q => { q.solved = q.solved === 'true' || q.solved === true; });
+            _origSaveData('questions', d.questions); questions = d.questions;
+          }
+          if (d.diary && typeof d.diary === 'object') {
+            _origSaveData('diaries', d.diary);
+          }
+
+          // Config系
+          const cfg = d.config || {};
+          CONFIG_KEYS.forEach(k => {
+            if (cfg[k] !== undefined) _origSaveData(k, cfg[k]);
+          });
+
+          // 全再描画
+          renderTaskCategorySelect();
+          renderStudySubjectSelect();
+          updateFinanceCategories();
+          renderTasks(); renderStudy(); renderFinance();
+          renderDiary(); renderQuestions(); renderCareer();
+          renderStudyCal(); renderFinanceCal();
+
+          banner.style.background = 'var(--accent-green)';
+          banner.textContent = '✓ データを同期しました';
+        } catch (e) {
+          console.error('syncFromGAS error:', e);
+          banner.style.background = '#6e4c18';
+          banner.textContent = '⚠ GAS同期エラー（ローカルデータで動作中）';
+        }
+        setTimeout(() => banner.remove(), 2500);
+      };
+
+      // scriptタグを挿入してJSONPリクエスト
+      const script = document.createElement('script');
+      script.id = 'gas-jsonp-script';
+      script.src = GAS_APP_URL + '?callback=' + cbName + '&nocache=' + Date.now();
+      script.onerror = function () {
+        cleanup();
+        banner.style.background = '#6e4c18';
+        banner.textContent = '⚠ GAS接続エラー（ローカルデータで動作中）';
+        setTimeout(() => banner.remove(), 2500);
+      };
+      document.body.appendChild(script);
     }
 
     // 起動時GAS同期（新規利用開始のためスキップ）
