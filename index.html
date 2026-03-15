@@ -3062,7 +3062,7 @@
 
         <!-- Editor -->
         <div class="card">
-          <div class="card-title">今日のふりかえり</div>
+          <div class="card-title" id="diary-editor-title">今日のふりかえり</div>
           <!-- Rating -->
           <div class="rating-group">
             <span class="rating-label">今日の評価：</span>
@@ -3267,7 +3267,10 @@
     }
 
     function formatDate(dateStr) {
-      const d = new Date(dateStr + 'T00:00:00');
+      if (!dateStr) return '';
+      const ymd = String(dateStr).split('T')[0];
+      const d = new Date(ymd + 'T00:00:00+09:00'); // JSTとしてパース
+      if (isNaN(d.getTime())) return String(dateStr);
       const m = d.getMonth() + 1;
       const day = d.getDate();
       const days = ['日', '月', '火', '水', '木', '金', '土'];
@@ -3275,7 +3278,10 @@
     }
 
     function formatDateFull(dateStr) {
-      const d = new Date(dateStr + 'T00:00:00');
+      if (!dateStr) return '';
+      const ymd = String(dateStr).split('T')[0];
+      const d = new Date(ymd + 'T00:00:00+09:00'); // JSTとしてパース
+      if (isNaN(d.getTime())) return String(dateStr);
       return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
     }
 
@@ -3909,6 +3915,14 @@
         delete diaries[diaryDate];
       }
 
+      // クリーニングアップ: UUIDなど YYYY-MM-DD 形式ではないキーを削除（GAS側にも反映させる）
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      Object.keys(diaries).forEach(k => {
+        if (!dateRegex.test(k)) {
+          delete diaries[k];
+        }
+      });
+
       try {
         saveData('diaries', diaries);
       } catch (e) {
@@ -3931,6 +3945,12 @@
       document.getElementById('diary-date-label').textContent =
         `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}(${days[d.getDay()]})`;
 
+      // タイトルを動的に変更
+      const titleEl = document.getElementById('diary-editor-title');
+      if (titleEl) {
+        titleEl.textContent = diaryDate === todayStr() ? '今日のふりかえり' : `${formatDateFull(diaryDate)}のふりかえり`;
+      }
+
       const diaries = loadData('diaries', {});
       const entry = diaries[diaryDate];
       document.getElementById('diary-content').value = entry ? entry.content : '';
@@ -3944,7 +3964,13 @@
 
     function renderDiaryHistory() {
       const diaries = loadData('diaries', {});
-      const dates = Object.keys(diaries).sort().reverse().slice(0, 10);
+      // 日付フォーマット(YYYY-MM-DD)に合致するキーのみを抽出してソート
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      const dates = Object.keys(diaries)
+        .filter(k => dateRegex.test(k))
+        .sort()
+        .reverse()
+        .slice(0, 10);
       const container = document.getElementById('diary-history');
 
       if (dates.length === 0) {
@@ -5405,7 +5431,7 @@
     //  ここにGASウェブアプリのURLを貼り付けてください
     // ===================================================================
 
-    const GAS_APP_URL = 'https://script.google.com/macros/s/AKfycbzCcfTIvWUOXWBhdVh_pB_34d2-t0M6FqAxqqeJNGuq2b1qzAbQYE9vZYajcn5IoYGW/exec'; // ← デプロイしたURLに書き換え
+    const GAS_APP_URL = 'https://script.google.com/macros/s/AKfycby1Vnfl1if138pkKHqAvhi3dyhz_sBkmrVUnYvoadOxo0_3NETlkghOutVlt0inzub9/exec'; // ← デプロイしたURLに書き換え
 
     // 元のsaveDataを保存
     const _origSaveData = saveData;
@@ -5580,7 +5606,12 @@
             _origSaveData('questions', d.questions); questions = d.questions;
           }
           if (d.diary && typeof d.diary === 'object') {
-            _origSaveData('diaries', d.diary);
+            const cleanDiary = {};
+            const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+            Object.keys(d.diary).forEach(k => {
+              if (dateRegex.test(k)) cleanDiary[k] = d.diary[k];
+            });
+            _origSaveData('diaries', cleanDiary);
           }
 
           // Config系
