@@ -5428,12 +5428,12 @@
     let isSyncing = false;
 
     // saveDataをオーバーライド → LocalStorage保存 + GASへ非同期同期
-    function saveData(key, data) {
+    saveData = function(key, data) {
       _origSaveData(key, data); // まずLocalStorageに保存（即時）
       if (!isSyncing) {
         syncToGAS(key, data).catch(console.warn); // GASへ非同期
       }
-    }
+    };
 
     const CONFIG_KEYS = ['careerSkills', 'careerRoadmap', 'weeklyActions',
       'aiChecks', 'careerDailyLog', 'careerSkillHistory',
@@ -5494,7 +5494,7 @@
 
     // 日記保存：画像がある場合はGASにアップロードしてURLを取得してから保存
     const _origSaveDiary = saveDiary;
-    async function saveDiary() {
+    saveDiary = async function() {
       if (!pendingImageData || !GAS_APP_URL || GAS_APP_URL.includes('YOUR_')) {
         _origSaveDiary(); // 画像なし or GASnot設定 → 元の処理
         return;
