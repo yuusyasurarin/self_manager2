@@ -259,27 +259,45 @@ function handleDelete(ws, id) {
 //  全件置換（replaceAll）
 // ===================================================================
 function handleReplaceAll(ws, rows, sheetName) {
-  const schemas = {
+  // スプレッドシートの実際のヘッダーを取得（ヘッダー行がない場合はスキーマで初期化）
+  const defaultSchemas = {
     'Tasks':     ['id', 'text', 'category', 'done', 'createdAt', 'memo'],
     'Study':     ['id', 'subject', 'minutes', 'date', 'memo'],
     'Finance':   ['id', 'type', 'category', 'amount', 'memo', 'date'],
     'Questions': ['id', 'text', 'solved', 'answer', 'createdAt'],
   };
-  const headers = schemas[sheetName];
-  if (!headers) return;
+
+  let sheetHeaders;
+  if (ws.getLastRow() >= 1 && ws.getLastColumn() >= 1) {
+    sheetHeaders = ws.getRange(1, 1, 1, ws.getLastColumn()).getValues()[0].map(String);
+  }
+  if (!sheetHeaders || sheetHeaders.length === 0 || sheetHeaders[0] === '') {
+    sheetHeaders = defaultSchemas[sheetName];
+    if (!sheetHeaders) return;
+    ws.getRange(1, 1, 1, sheetHeaders.length).setValues([sheetHeaders]);
+  }
+
+  // エイリアスの逆引き: コード側のキー名 → スプレッドシートのヘッダー名
+  // HEADER_ALIAS は上で const で定義されている前提（例: title->text, status->done）
+  const REVERSE_ALIAS = {};
+  Object.entries(HEADER_ALIAS).forEach(([sheetKey, codeKey]) => {
+    REVERSE_ALIAS[codeKey] = sheetKey;
+  });
 
   // ヘッダー行以外をすべて削除
   const lastRow = ws.getLastRow();
   if (lastRow > 1) ws.deleteRows(2, lastRow - 1);
 
-  // 新規データを一括追加
+  // 新規データを一括追加（スプレッドシートのヘッダー名に合わせてマッピング）
   if (!rows || rows.length === 0) return;
-  const data = rows.map(row => headers.map(h => {
-    const v = row[h];
+  const data = rows.map(row => sheetHeaders.map(sheetCol => {
+    // スプレッドシートのヘッダー名に対応するコード側のキーを解決
+    const codeKey = HEADER_ALIAS[sheetCol] || sheetCol; 
+    const v = row[codeKey] !== undefined ? row[codeKey] : row[sheetCol]; // どちらでも対応
     if (typeof v === 'boolean') return String(v);
-    return v !== undefined ? v : '';
+    return v !== undefined && v !== null ? v : '';
   }));
-  ws.getRange(2, 1, data.length, headers.length).setValues(data);
+  ws.getRange(2, 1, data.length, sheetHeaders.length).setValues(data);
 }
 
 // ===================================================================
@@ -287,31 +305,29 @@ function handleReplaceAll(ws, rows, sheetName) {
 // ===================================================================
 function handleSaveDiary(ws, date, entry) {
   const data    = ws.getDataRange().getValues();
-  const headers = data[0];
-  const dateCol = headers.indexOf('date');
+  const rawHeaders = data[0];
+  const dateCol = rawHeaders.indexOf('date');
   if (dateCol === -1) return;
+
+  // ヘッダーに基づいて書き込む値のオブジェクトを作成
+  const entryObj = {
+    date:      date,
+    content:   entry.content   || '',
+    rating:    entry.rating    || '',
+    imageUrl:  entry.imageUrl  || '',
+    updatedAt: entry.updatedAt || new Date().toISOString(),
+  };
+  const newRow = rawHeaders.map(h => entryObj[h] !== undefined ? entryObj[h] : '');
 
   for (let r = 1; r < data.length; r++) {
     if (String(data[r][dateCol]) === String(date)) {
       // 既存行を更新
-      ws.getRange(r + 1, 1, 1, headers.length).setValues([[
-        date,
-        entry.content   || '',
-        entry.rating    || '',
-        entry.imageUrl  || '',
-        entry.updatedAt || new Date().toISOString(),
-      ]]);
+      ws.getRange(r + 1, 1, 1, rawHeaders.length).setValues([newRow]);
       return;
     }
   }
   // 新規行を追加
-  ws.appendRow([
-    date,
-    entry.content   || '',
-    entry.rating    || '',
-    entry.imageUrl  || '',
-    entry.updatedAt || new Date().toISOString(),
-  ]);
+  ws.appendRow(newRow);
 }
 
 function handleDeleteDiary(ws, date) {
@@ -330,14 +346,27 @@ function handleDeleteDiary(ws, date) {
 
 // 日記を全件まとめて保存
 function handleSaveAllDiaries(ws, entries) {
+  // ヘッダー行を取得（なければデフォルト）
+  let headers;
+  if (ws.getLastRow() >= 1 && ws.getLastColumn() >= 1) {
+    headers = ws.getRange(1, 1, 1, ws.getLastColumn()).getValues()[0].map(String);
+  }
+  if (!headers || headers.length === 0 || headers[0] === '') {
+    headers = ['date', 'content', 'rating', 'imageUrl', 'updatedAt'];
+    ws.getRange(1, 1, 1, headers.length).setValues([headers]);
+  }
+
   // ヘッダー以外削除
   const lastRow = ws.getLastRow();
   if (lastRow > 1) ws.deleteRows(2, lastRow - 1);
   if (!entries || Object.keys(entries).length === 0) return;
-  const rows = Object.entries(entries).map(([date, e]) => [
-    date, e.content||'', e.rating||'', e.imageUrl||'', e.updatedAt||new Date().toISOString()
-  ]);
-  if (rows.length > 0) ws.getRange(2, 1, rows.length, 5).setValues(rows);
+
+  const rows = Object.entries(entries).map(([date, e]) => {
+    const obj = { date, content: e.content||'', rating: e.rating||'',
+      imageUrl: e.imageUrl||'', updatedAt: e.updatedAt||new Date().toISOString() };
+    return headers.map(h => obj[h] !== undefined ? obj[h] : '');
+  });
+  if (rows.length > 0) ws.getRange(2, 1, rows.length, headers.length).setValues(rows);
 }
 
 // ===================================================================
