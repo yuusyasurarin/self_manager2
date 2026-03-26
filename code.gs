@@ -259,7 +259,7 @@ function handleDelete(ws, id) {
 //  全件置換（replaceAll）
 // ===================================================================
 function handleReplaceAll(ws, rows, sheetName) {
-  // スプレッドシートの実際のヘッダーを取得（ヘッダー行がない場合はスキーマで初期化）
+  // スプレッドシートの実際のヘッダーを取得（なければスキーマで初期化）
   const defaultSchemas = {
     'Tasks':     ['id', 'text', 'category', 'done', 'createdAt', 'memo'],
     'Study':     ['id', 'subject', 'minutes', 'date', 'memo'],
@@ -277,28 +277,20 @@ function handleReplaceAll(ws, rows, sheetName) {
     ws.getRange(1, 1, 1, sheetHeaders.length).setValues([sheetHeaders]);
   }
 
-  // エイリアスの逆引き: コード側のキー名 → スプレッドシートのヘッダー名
-  // HEADER_ALIAS は上で const で定義されている前提（例: title->text, status->done）
-  const REVERSE_ALIAS = {};
-  Object.entries(HEADER_ALIAS).forEach(([sheetKey, codeKey]) => {
-    REVERSE_ALIAS[codeKey] = sheetKey;
-  });
-
   // ヘッダー行以外をすべて削除
   const lastRow = ws.getLastRow();
   if (lastRow > 1) ws.deleteRows(2, lastRow - 1);
 
-  // 新規データを一括追加（スプレッドシートのヘッダー名に合わせてマッピング）
+  // 新規データを一括追加（実際のシートヘッダーに合わせてマッピング）
   if (!rows || rows.length === 0) return;
-  const data = rows.map(row => sheetHeaders.map(sheetCol => {
-    // スプレッドシートのヘッダー名に対応するコード側のキーを解決
-    const codeKey = HEADER_ALIAS[sheetCol] || sheetCol; 
-    const v = row[codeKey] !== undefined ? row[codeKey] : row[sheetCol]; // どちらでも対応
+  const data = rows.map(row => sheetHeaders.map(col => {
+    const v = row[col];
     if (typeof v === 'boolean') return String(v);
     return v !== undefined && v !== null ? v : '';
   }));
   ws.getRange(2, 1, data.length, sheetHeaders.length).setValues(data);
 }
+
 
 // ===================================================================
 //  Diary 専用操作（date をキーとする）
