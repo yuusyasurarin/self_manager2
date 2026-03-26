@@ -1,0 +1,12 @@
+{
+  "name": "daiary-antigravity",
+  "version": "1.0.0",
+  "description": "\u7406\u7cfb\u5b66\u751f\u5411\u3051\u81ea\u5df1\u7ba1\u7406\u30a2\u30d7\u30ea",
+  "scripts": {
+    "build": "node build.js",
+    "test": "echo \"No tests\" && exit 0"
+  },
+  "devDependencies": {
+    "jsdom": "^29.0.0"
+  }
+}

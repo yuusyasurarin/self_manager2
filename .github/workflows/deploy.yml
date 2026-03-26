@@ -1,0 +1,38 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [ main ]
+  # 手動でもデプロイできるように
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # gh-pages ブランチへのプッシュ権限
+
+    steps:
+      - name: リポジトリをチェックアウト
+        uses: actions/checkout@v4
+
+      - name: Node.js 20 をセットアップ
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 依存パッケージをインストール
+        run: npm ci
+
+      - name: プロジェクトをビルド（GAS URL を埋め込む）
+        run: node build.js
+        env:
+          GAS_APP_URL: ${{ secrets.GAS_APP_URL }}
+
+      - name: GitHub Pages へデプロイ
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          # gh-pages ブランチに force push（常に最新に保つ）
+          force_orphan: true

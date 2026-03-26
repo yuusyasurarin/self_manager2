@@ -5451,7 +5451,9 @@
     //  ここにGASウェブアプリのURLを貼り付けてください
     // ===================================================================
 
-    const GAS_APP_URL = 'https://script.google.com/macros/s/AKfycbxkPmTXbQhRPp73bggEDEMq1iUem7JbDe8AQuKI-V7rWIcYZ1E_VC1RJFZU-gSnPobJ/exec'; // ← デプロイしたURLに書き換え
+    // ビルドスクリプト(build.js)が __GAS_APP_URL__ を実際のURLに置換します
+    // ローカルで直接 index.html を開く場合はここに直接URLを書いてください
+    const GAS_APP_URL = '__GAS_APP_URL__';
 
     // 元のsaveDataを保存
     const _origSaveData = saveData;
